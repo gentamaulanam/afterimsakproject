@@ -112,7 +112,7 @@
 
     <script>
         // --- KONFIGURASI API GEMINI ---
-        const apiKey = ""; // Disediakan oleh runtime
+        const apiKey = "AIzaSyD-contoh-kode-rahasia-milikmu-12345"; // Disediakan oleh runtime
         let isFetchingAI = false;
         let aiTheme = "Luar Angkasa";
 
