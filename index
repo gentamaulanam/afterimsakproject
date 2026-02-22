@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Co-op Space AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        /* Mencegah zoom dan scroll tidak sengaja di HP */
+        body { touch-action: none; overscroll-behavior: none; }
+        canvas { display: block; margin: 0 auto; background: #0f172a; }
+        .btn-active:active { transform: scale(0.95); }
+        .glow-text { text-shadow: 0 0 10px rgba(217, 70, 239, 0.8); }
+    </style>
+</head>
+<body class="bg-slate-900 text-white font-sans h-screen w-screen overflow-hidden flex flex-col">
+
+    <!-- SCREEN: MENU UTAMA -->
+    <div id="screen-menu" class="flex-1 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
+        <!-- Dekorasi Bintang -->
+        <div class="absolute top-10 left-10 text-yellow-300 opacity-50 text-2xl animate-pulse">✨</div>
+        <div class="absolute bottom-20 right-20 text-purple-400 opacity-50 text-4xl animate-pulse" style="animation-delay: 1s;">✨</div>
+
+        <h1 class="text-4xl md:text-6xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 glow-text">🚀 Co-op AI Trivia</h1>
+        <p class="mb-12 text-slate-400 max-w-md">Satu layar sebagai Host (PC), gunakan HP kalian sebagai Controller. Jawab teka-teki dari AI ✨ bersama untuk bertahan hidup!</p>
+        
+        <div class="flex flex-col gap-4 w-full max-w-xs z-10">
+            <button onclick="showHostScreen()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-xl text-xl shadow-[0_0_15px_rgba(79,70,229,0.5)] transition">
+                🖥️ Buat Game (Host)
+            </button>
+            <button onclick="showLoginScreen()" class="bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 px-6 rounded-xl text-xl shadow-[0_0_15px_rgba(20,184,166,0.5)] transition">
+                📱 Masuk Game (Player)
+            </button>
+        </div>
+    </div>
+
+    <!-- SCREEN: HOST -->
+    <div id="screen-host" class="hidden flex-1 flex flex-col h-full w-full">
+        <div class="bg-slate-800 p-4 flex justify-between items-center shadow-md z-10 border-b border-purple-500/30">
+            <div>
+                <span class="text-slate-400 text-sm">Room ID:</span>
+                <h2 id="host-room-id" class="text-3xl font-mono font-bold text-yellow-400 tracking-wider">----</h2>
+            </div>
+            <div class="flex gap-4 text-sm md:text-base">
+                <div id="status-p1" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-400 font-semibold border-2 border-transparent transition-colors">P1 (Kiri): Menunggu...</div>
+                <div id="status-p2" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-400 font-semibold border-2 border-transparent transition-colors">P2 (Kanan): Menunggu...</div>
+            </div>
+        </div>
+        <div class="flex-1 relative w-full flex justify-center items-center bg-black">
+            <canvas id="gameCanvas"></canvas>
+            
+            <!-- Layar Game Over / Menunggu -->
+            <div id="host-overlay" class="absolute inset-0 bg-slate-900/90 flex items-center justify-center flex-col z-20 backdrop-blur-sm">
+                <h2 id="overlay-title" class="text-4xl md:text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">Menunggu Pemain...</h2>
+                <p id="overlay-desc" class="text-xl text-slate-300 mb-8">Buka web ini di HP dan masukkan Room ID di atas.</p>
+                
+                <div class="bg-slate-800/80 p-6 rounded-2xl border border-purple-500/50 flex flex-col items-center max-w-md text-center w-[90%]">
+                    <label class="text-purple-300 font-bold mb-2 text-lg">✨ Tema Soal AI (Gemini)</label>
+                    <p class="text-xs text-slate-400 mb-4">AI akan membuat rintangan soal berdasarkan tema ini.</p>
+                    <input type="text" id="ai-theme-input" placeholder="Misal: Superhero, Astronomi, Makanan..." class="w-full text-center text-xl bg-slate-900 border-2 border-slate-600 rounded-xl py-3 px-4 focus:outline-none focus:border-purple-400 text-white shadow-inner mb-6 transition-colors" value="Luar Angkasa">
+                    
+                    <button id="btn-restart" onclick="resetGame()" class="hidden w-full bg-gradient-to-r from-purple-600 to-indigo-600 py-3 rounded-xl font-bold text-xl hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-all">✨ Main Lagi</button>
+                    <div id="waiting-spinner" class="mt-4 flex gap-2">
+                        <div class="w-3 h-3 bg-purple-500 rounded-full animate-bounce"></div>
+                        <div class="w-3 h-3 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                        <div class="w-3 h-3 bg-purple-500 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN: PLAYER LOGIN -->
+    <div id="screen-login" class="hidden flex-1 flex flex-col items-center justify-center p-6 relative">
+        <h2 class="text-3xl font-bold mb-8 text-cyan-400">Masuk ke Room</h2>
+        <input type="text" id="input-room-id" placeholder="Mskn 4 Digit ID" class="text-center text-4xl font-mono bg-slate-800 border-2 border-slate-600 rounded-xl py-4 px-6 mb-6 w-full max-w-xs focus:outline-none focus:border-cyan-400 uppercase shadow-inner" maxlength="4">
+        <button onclick="joinGame()" id="btn-join" class="bg-teal-500 text-white font-bold py-4 px-8 rounded-xl text-xl w-full max-w-xs btn-active shadow-[0_0_15px_rgba(20,184,166,0.5)]">
+            Hubungkan
+        </button>
+        <p id="login-error" class="text-pink-400 mt-4 hidden bg-pink-500/10 px-4 py-2 rounded-lg border border-pink-500/50">⚠️ Gagal terhubung. Cek kembali ID Room.</p>
+    </div>
+
+    <!-- SCREEN: CONTROLLER (HP) -->
+    <div id="screen-controller" class="hidden flex-1 flex flex-col h-full bg-slate-900 select-none">
+        
+        <!-- Status Bar -->
+        <div class="p-4 bg-slate-800 text-center shadow-md flex justify-between items-center border-b border-slate-700">
+            <span class="font-bold text-slate-400">Room: <span id="ctrl-room-id" class="text-white"></span></span>
+            <span id="player-role-badge" class="px-3 py-1 rounded-full text-sm font-bold bg-cyan-600 shadow-[0_0_10px_rgba(8,145,178,0.5)]">Player</span>
+        </div>
+
+        <!-- Area Pertanyaan -->
+        <div id="ctrl-question-area" class="flex-1 p-4 flex flex-col justify-center items-center opacity-40 transition-opacity duration-300 bg-slate-800/50">
+            <h3 class="text-lg text-slate-400 mb-4 font-bold text-center flex items-center gap-2">
+                <span id="q-status-icon">⏳</span> 
+                <span id="q-status-text">Menunggu Sinyal AI...</span>
+            </h3>
+            <div class="grid grid-cols-2 gap-3 w-full h-32">
+                <button id="ans-btn-1" class="bg-slate-700 text-lg md:text-xl font-bold rounded-xl btn-active opacity-50 cursor-not-allowed transition p-2 break-words shadow-inner" disabled onclick="sendAnswer(0)">-</button>
+                <button id="ans-btn-2" class="bg-slate-700 text-lg md:text-xl font-bold rounded-xl btn-active opacity-50 cursor-not-allowed transition p-2 break-words shadow-inner" disabled onclick="sendAnswer(1)">-</button>
+            </div>
+        </div>
+
+        <!-- Area Kontrol Gerak -->
+        <div class="h-[45%] p-4 flex gap-4 pb-8 bg-slate-900">
+            <button id="btn-move" class="flex-1 bg-indigo-600 rounded-3xl flex items-center justify-center text-4xl font-bold shadow-[0_8px_0_rgba(49,46,129,1)] btn-active transition-transform touch-none border border-indigo-400/30">
+                <span id="move-icon" class="text-white drop-shadow-md">KIRI</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- KONFIGURASI API GEMINI ---
+        const apiKey = ""; // Disediakan oleh runtime
+        let isFetchingAI = false;
+        let aiTheme = "Luar Angkasa";
+
+        // --- VARIABEL GLOBAL ---
+        let peer = null;
+        let connections = { p1: null, p2: null };
+        let hostId = null;
+        let myRole = null; 
+        let myConnection = null; 
+
+        // Variabel Game
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas?.getContext('2d');
+        let gameLoop;
+        let isPlaying = false;
+        
+        let ship = { x: 200, y: 500, width: 44, height: 44, speed: 6, color: '#06b6d4' };
+        let keys = { left: false, right: false };
+        let obstacles = [];
+        let gates = [];
+        let stars = []; // Latar belakang parallax
+        let score = 0;
+        let hp = 3;
+        let frameCount = 0;
+        let activeQuestion = null; 
+
+        // Setup Bintang Latar Belakang
+        for(let i=0; i<50; i++) {
+            stars.push({
+                x: Math.random() * 800,
+                y: Math.random() * 800,
+                size: Math.random() * 2 + 1,
+                speed: Math.random() * 2 + 0.5
+            });
+        }
+
+        // --- INTEGRASI GEMINI API ✨ ---
+        async function fetchAIQuestion(theme, retries = 5, delay = 1000) {
+            if (!apiKey) return null; // Jika API Key tidak ada, kembalikan null (fallback ke Math)
+
+            const promptText = `Buat satu pertanyaan trivia singkat bertema "${theme}". Pertanyaan maksimal 6 kata. Berikan 1 jawaban benar dan 3 jawaban salah (maksimal 2 kata per jawaban). Kembalikan dalam format JSON.`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: promptText }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            q: { type: "STRING", description: "Pertanyaan singkat" },
+                            ans: { type: "STRING", description: "Jawaban benar" },
+                            w1: { type: "STRING", description: "Jawaban salah 1" },
+                            w2: { type: "STRING", description: "Jawaban salah 2" },
+                            w3: { type: "STRING", description: "Jawaban salah 3" }
+                        },
+                        required: ["q", "ans", "w1", "w2", "w3"]
+                    }
+                }
+            };
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!response.ok) throw new Error("HTTP error " + response.status);
+                    
+                    const result = await response.json();
+                    if (result.candidates && result.candidates[0].content.parts[0].text) {
+                        return JSON.parse(result.candidates[0].content.parts[0].text);
+                    }
+                } catch (e) {
+                    console.warn(`Gemini API attempt ${i+1} failed.`, e);
+                    if (i === retries - 1) return null;
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2; // Exponential backoff
+                }
+            }
+            return null;
+        }
+
+        // --- SISTEM PEERJS (WEB RTC) ---
+        function generateRoomId() {
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        // INIT HOST
+        function showHostScreen() {
+            document.getElementById('screen-menu').classList.add('hidden');
+            document.getElementById('screen-host').classList.remove('hidden');
+            myRole = 'host';
+            hostId = generateRoomId();
+            document.getElementById('host-room-id').innerText = hostId;
+
+            peer = new Peer(`ai-trivia-${hostId}`);
+
+            peer.on('open', (id) => {
+                console.log('Host siap dengan ID: ' + id);
+                resizeCanvas();
+            });
+
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    if (!connections.p1) {
+                        connections.p1 = conn;
+                        updateHostUI('p1', true);
+                        conn.send({ type: 'init', role: 'p1' });
+                    } else if (!connections.p2) {
+                        connections.p2 = conn;
+                        updateHostUI('p2', true);
+                        conn.send({ type: 'init', role: 'p2' });
+                    } else {
+                        conn.send({ type: 'error', msg: 'Room Penuh!' });
+                        conn.close();
+                        return;
+                    }
+
+                    if (connections.p1 && connections.p2 && !isPlaying) {
+                        document.getElementById('waiting-spinner').classList.add('hidden');
+                        document.getElementById('btn-restart').classList.remove('hidden');
+                        document.getElementById('overlay-title').innerText = "Semua Pemain Siap!";
+                        document.getElementById('btn-restart').innerText = "✨ Mulai Game";
+                        // Auto start setelah 2 detik atau tunggu klik host
+                    }
+
+                    conn.on('data', (data) => {
+                        handleControllerInput(conn, data);
+                    });
+
+                    conn.on('close', () => {
+                        if (connections.p1 === conn) { connections.p1 = null; updateHostUI('p1', false); }
+                        if (connections.p2 === conn) { connections.p2 = null; updateHostUI('p2', false); }
+                        pauseGame('Pemain terputus, menunggu...');
+                    });
+                });
+            });
+        }
+
+        function updateHostUI(player, isConnected) {
+            const el = document.getElementById(`status-${player}`);
+            if (isConnected) {
+                el.classList.replace('bg-slate-700', 'bg-green-600');
+                el.classList.replace('text-slate-400', 'text-white');
+                el.innerText = player === 'p1' ? 'P1 (Kiri) ✓' : 'P2 (Kanan) ✓';
+            } else {
+                el.classList.replace('bg-green-600', 'bg-slate-700');
+                el.classList.replace('text-white', 'text-slate-400');
+                el.innerText = player === 'p1' ? 'P1 (Kiri): Menunggu' : 'P2 (Kanan): Menunggu';
+            }
+        }
+
+        // INIT PLAYER
+        function showLoginScreen() {
+            document.getElementById('screen-menu').classList.add('hidden');
+            document.getElementById('screen-login').classList.remove('hidden');
+        }
+
+        function joinGame() {
+            const roomId = document.getElementById('input-room-id').value.trim();
+            if (roomId.length !== 4) return;
+
+            const btn = document.getElementById('btn-join');
+            btn.innerText = "Menghubungkan...";
+            btn.classList.add('animate-pulse');
+            document.getElementById('login-error').classList.add('hidden');
+
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myConnection = peer.connect(`ai-trivia-${roomId}`);
+                
+                myConnection.on('open', () => {
+                    document.getElementById('screen-login').classList.add('hidden');
+                    document.getElementById('screen-controller').classList.remove('hidden');
+                    document.getElementById('ctrl-room-id').innerText = roomId;
+                });
+
+                myConnection.on('data', (data) => {
+                    if (data.type === 'init') {
+                        myRole = data.role; 
+                        setupControllerUI(myRole);
+                    } else if (data.type === 'question') {
+                        showQuestionUI(data.options);
+                    } else if (data.type === 'clear_question') {
+                        hideQuestionUI();
+                    } else if (data.type === 'error') {
+                        alert(data.msg);
+                        location.reload();
+                    }
+                });
+
+                myConnection.on('error', () => showLoginError());
+            });
+
+            peer.on('error', () => showLoginError());
+        }
+
+        function showLoginError() {
+            const btn = document.getElementById('btn-join');
+            btn.innerText = "Hubungkan";
+            btn.classList.remove('animate-pulse');
+            document.getElementById('login-error').classList.remove('hidden');
+        }
+
+        // --- CONTROLLER UI & LOGIC ---
+        function setupControllerUI(role) {
+            const btnMove = document.getElementById('btn-move');
+            const icon = document.getElementById('move-icon');
+            const badge = document.getElementById('player-role-badge');
+            
+            if (role === 'p1') {
+                badge.innerText = 'Pemain 1';
+                badge.className = 'px-3 py-1 rounded-full text-sm font-bold bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] text-white';
+                btnMove.className = 'flex-1 bg-indigo-600 rounded-3xl flex items-center justify-center text-4xl font-bold shadow-[0_8px_0_rgba(49,46,129,1)] active:shadow-[0_0px_0_rgba(49,46,129,1)] active:translate-y-2 transition-all touch-none border border-indigo-400/30';
+                icon.innerText = '⬅️ KIRI';
+                
+                const sendMove = (state) => myConnection && myConnection.send({ type: 'move', dir: 'left', state: state });
+                btnMove.addEventListener('touchstart', (e) => { e.preventDefault(); sendMove(true); });
+                btnMove.addEventListener('touchend', (e) => { e.preventDefault(); sendMove(false); });
+                btnMove.addEventListener('mousedown', () => sendMove(true));
+                btnMove.addEventListener('mouseup', () => sendMove(false));
+                btnMove.addEventListener('mouseleave', () => sendMove(false));
+            } else {
+                badge.innerText = 'Pemain 2';
+                badge.className = 'px-3 py-1 rounded-full text-sm font-bold bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)] text-white';
+                btnMove.className = 'flex-1 bg-teal-600 rounded-3xl flex items-center justify-center text-4xl font-bold shadow-[0_8px_0_rgba(17,94,89,1)] active:shadow-[0_0px_0_rgba(17,94,89,1)] active:translate-y-2 transition-all touch-none border border-teal-400/30';
+                icon.innerText = 'KANAN ➡️';
+
+                const sendMove = (state) => myConnection && myConnection.send({ type: 'move', dir: 'right', state: state });
+                btnMove.addEventListener('touchstart', (e) => { e.preventDefault(); sendMove(true); });
+                btnMove.addEventListener('touchend', (e) => { e.preventDefault(); sendMove(false); });
+                btnMove.addEventListener('mousedown', () => sendMove(true));
+                btnMove.addEventListener('mouseup', () => sendMove(false));
+                btnMove.addEventListener('mouseleave', () => sendMove(false));
+            }
+        }
+
+        let currentOptions = [];
+        function showQuestionUI(options) {
+            currentOptions = options;
+            const area = document.getElementById('ctrl-question-area');
+            const btn1 = document.getElementById('ans-btn-1');
+            const btn2 = document.getElementById('ans-btn-2');
+
+            area.classList.remove('opacity-40');
+            area.classList.add('bg-purple-900/40', 'border-t', 'border-purple-500/50');
+            
+            document.getElementById('q-status-icon').innerText = "✨";
+            document.getElementById('q-status-text').innerText = "Pilih Jawaban AI!";
+            document.getElementById('q-status-text').classList.replace('text-slate-400', 'text-yellow-300');
+
+            btn1.innerText = options[0];
+            btn2.innerText = options[1];
+            
+            [btn1, btn2].forEach(btn => {
+                btn.disabled = false;
+                btn.className = 'bg-gradient-to-b from-purple-500 to-indigo-600 text-white text-lg font-bold rounded-xl btn-active shadow-[0_4px_0_rgba(79,70,229,1)] active:shadow-[0_0px_0_rgba(79,70,229,1)] active:translate-y-1 transition-all p-2 break-words border border-purple-400/50';
+            });
+        }
+
+        function hideQuestionUI() {
+            const area = document.getElementById('ctrl-question-area');
+            const btn1 = document.getElementById('ans-btn-1');
+            const btn2 = document.getElementById('ans-btn-2');
+
+            area.classList.add('opacity-40');
+            area.classList.remove('bg-purple-900/40', 'border-t', 'border-purple-500/50');
+
+            document.getElementById('q-status-icon').innerText = "⏳";
+            document.getElementById('q-status-text').innerText = "Menunggu Sinyal...";
+            document.getElementById('q-status-text').classList.replace('text-yellow-300', 'text-slate-400');
+
+            btn1.innerText = "-";
+            btn2.innerText = "-";
+            
+            [btn1, btn2].forEach(btn => {
+                btn.disabled = true;
+                btn.className = 'bg-slate-700 text-slate-500 text-xl font-bold rounded-xl opacity-50 cursor-not-allowed transition p-2 border border-slate-600';
+            });
+        }
+
+        function sendAnswer(index) {
+            if (myConnection) {
+                myConnection.send({ type: 'answer', value: currentOptions[index] });
+                hideQuestionUI();
+            }
+        }
+
+        // --- GAME ENGINE (HOST LOGIC) ---
+        function handleControllerInput(conn, data) {
+            if (!isPlaying) return;
+
+            if (data.type === 'move') {
+                if (data.dir === 'left') keys.left = data.state;
+                if (data.dir === 'right') keys.right = data.state;
+            } 
+            else if (data.type === 'answer') {
+                checkAnswer(data.value);
+            }
+        }
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            let w = container.clientWidth;
+            let h = container.clientHeight;
+            if (w > 600) w = 600; 
+
+            canvas.width = w;
+            canvas.height = h;
+            ship.y = canvas.height - 120;
+            ship.x = canvas.width / 2 - ship.width / 2;
+            
+            // Adjust stars
+            stars.forEach(s => s.x = Math.random() * canvas.width);
+        }
+
+        window.addEventListener('resize', () => {
+            if (myRole === 'host') resizeCanvas();
+        });
+
+        function startGame() {
+            const themeInput = document.getElementById('ai-theme-input').value.trim();
+            aiTheme = themeInput !== "" ? themeInput : "Astronomi";
+
+            document.getElementById('host-overlay').classList.add('hidden');
+            isPlaying = true;
+            score = 0;
+            hp = 3;
+            obstacles = [];
+            gates = [];
+            frameCount = 0;
+            activeQuestion = null;
+            isFetchingAI = false;
+            
+            broadcastToPlayers({ type: 'clear_question' });
+            resizeCanvas();
+            if(!gameLoop) loop();
+        }
+
+        function pauseGame(msg) {
+            isPlaying = false;
+            document.getElementById('host-overlay').classList.remove('hidden');
+            document.getElementById('overlay-title').innerText = "Dijeda";
+            document.getElementById('overlay-title').className = "text-4xl font-bold mb-2 text-yellow-400";
+            document.getElementById('overlay-desc').innerText = msg;
+            
+            document.getElementById('ai-theme-input').classList.add('hidden');
+            document.getElementById('btn-restart').classList.add('hidden');
+            document.getElementById('waiting-spinner').classList.remove('hidden');
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            document.getElementById('host-overlay').classList.remove('hidden');
+            document.getElementById('overlay-title').innerText = "Game Over!";
+            document.getElementById('overlay-title').className = "text-5xl font-bold mb-2 text-pink-500 glow-text";
+            document.getElementById('overlay-desc').innerText = `Skor Akhir: ${score}`;
+            
+            document.getElementById('ai-theme-input').classList.remove('hidden');
+            document.getElementById('waiting-spinner').classList.add('hidden');
+            document.getElementById('btn-restart').classList.remove('hidden');
+            document.getElementById('btn-restart').innerText = "✨ Main Lagi";
+            broadcastToPlayers({ type: 'clear_question' });
+        }
+
+        function resetGame() {
+            if (connections.p1 && connections.p2) {
+                startGame();
+            } else {
+                pauseGame('Menunggu pemain lengkap...');
+            }
+        }
+
+        function broadcastToPlayers(data) {
+            if (connections.p1) connections.p1.send(data);
+            if (connections.p2) connections.p2.send(data);
+        }
+
+        // Logic Spawn Gate
+        async function spawnGate() {
+            isFetchingAI = true;
+            let qData = null;
+            
+            // Mencoba generate pertanyaan via AI
+            if (apiKey) {
+                qData = await fetchAIQuestion(aiTheme);
+            }
+
+            // Jika AI gagal atau tidak ada API Key, fallback ke soal matematika
+            if (!qData) {
+                const n1 = Math.floor(Math.random()*10)+1;
+                const n2 = Math.floor(Math.random()*10)+1;
+                const ans = n1+n2;
+                qData = {
+                    q: `${n1} + ${n2} = ?`,
+                    ans: ans.toString(),
+                    w1: (ans+1).toString(), w2: (ans-2).toString(), w3: (ans+5).toString()
+                };
+            }
+
+            // Setup Gate
+            let options = [qData.ans, qData.w1, qData.w2, qData.w3];
+            // Acak urutan
+            for (let i = options.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [options[i], options[j]] = [options[j], options[i]];
+            }
+
+            activeQuestion = { 
+                qStr: "✨ " + qData.q, 
+                answer: qData.ans, 
+                y: -90, 
+                height: 70 
+            };
+            gates.push(activeQuestion);
+
+            const p1Options = [options[0], options[1]];
+            const p2Options = [options[2], options[3]];
+
+            if(connections.p1) connections.p1.send({ type: 'question', options: p1Options });
+            if(connections.p2) connections.p2.send({ type: 'question', options: p2Options });
+            
+            isFetchingAI = false;
+        }
+
+        function checkAnswer(ans) {
+            if (!activeQuestion) return;
+
+            if (ans === activeQuestion.answer) {
+                // Benar! Hancurkan gerbang
+                score += 50; // AI Gate kasih poin besar
+                gates = []; 
+                activeQuestion = null;
+                broadcastToPlayers({ type: 'clear_question' });
+                
+                // Efek visual sukses di layar host 
+                canvas.style.backgroundColor = 'rgba(16, 185, 129, 0.2)'; // emerald
+                setTimeout(() => canvas.style.backgroundColor = 'transparent', 200);
+
+            } else {
+                // Salah!
+                hp--;
+                broadcastToPlayers({ type: 'clear_question' }); 
+                if (hp <= 0) gameOver();
+                else {
+                    // Kedip merah
+                    canvas.style.backgroundColor = 'rgba(225, 29, 72, 0.3)'; // rose
+                    setTimeout(() => canvas.style.backgroundColor = 'transparent', 200);
+                }
+            }
+        }
+
+        function updateGame() {
+            // Update Stars Parallax
+            stars.forEach(s => {
+                s.y += s.speed;
+                if(s.y > canvas.height) {
+                    s.y = 0;
+                    s.x = Math.random() * canvas.width;
+                }
+            });
+
+            // Gerak Pesawat 
+            if (keys.left && ship.x > 0) ship.x -= ship.speed;
+            if (keys.right && ship.x < canvas.width - ship.width) ship.x += ship.speed;
+
+            // Spawn Obstacle Biasa (Batu Asteroid)
+            if (frameCount % 70 === 0 && Math.random() > 0.4 && !activeQuestion) {
+                obstacles.push({
+                    x: Math.random() * (canvas.width - 40),
+                    y: -40,
+                    width: 35 + Math.random() * 20,
+                    height: 35 + Math.random() * 20,
+                    speed: 3 + (score / 200)
+                });
+            }
+
+            // Spawn AI Gate 
+            // Cek setiap interval, jika sedang tidak ada soal, dan tidak sedang fetch API
+            if (frameCount % 450 === 0 && !activeQuestion && !isFetchingAI && score > 0) {
+                spawnGate();
+            }
+
+            // Update Obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += obs.speed;
+
+                // Hitbox simpel
+                if (ship.x < obs.x + obs.width - 5 &&
+                    ship.x + ship.width > obs.x + 5 &&
+                    ship.y < obs.y + obs.height - 5 &&
+                    ship.y + ship.height > obs.y + 5) {
+                    
+                    hp--;
+                    obstacles.splice(i, 1);
+                    canvas.style.backgroundColor = 'rgba(225, 29, 72, 0.3)';
+                    setTimeout(() => canvas.style.backgroundColor = 'transparent', 150);
+                    if (hp <= 0) gameOver();
+                } else if (obs.y > canvas.height) {
+                    score += 10;
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Update AI Gate
+            for (let i = gates.length - 1; i >= 0; i--) {
+                let gate = gates[i];
+                gate.y += 1.2; // Turun lebih lambat agar ada waktu mikir
+                
+                // Tabrak gerbang tanpa menjawab
+                if (gate.y + gate.height > ship.y) {
+                    hp--;
+                    gates.splice(i, 1);
+                    activeQuestion = null;
+                    broadcastToPlayers({ type: 'clear_question' });
+                    canvas.style.backgroundColor = 'rgba(225, 29, 72, 0.4)';
+                    setTimeout(() => canvas.style.backgroundColor = 'transparent', 200);
+                    if (hp <= 0) gameOver();
+                }
+            }
+
+            frameCount++;
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Stars
+            ctx.fillStyle = '#ffffff';
+            stars.forEach(s => {
+                ctx.globalAlpha = s.size / 3;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Gambar Pesawat (Segitiga futuristik)
+            ctx.save();
+            ctx.translate(ship.x + ship.width/2, ship.y + ship.height/2);
+            
+            // Thruster api
+            ctx.fillStyle = (frameCount % 4 < 2) ? '#f59e0b' : '#ef4444'; // kedip
+            ctx.beginPath();
+            ctx.moveTo(-10, ship.height/2);
+            ctx.lineTo(10, ship.height/2);
+            ctx.lineTo(0, ship.height/2 + 20 + Math.random()*10);
+            ctx.fill();
+
+            // Sayap
+            ctx.fillStyle = '#1e1b4b'; // indigo-950
+            ctx.beginPath();
+            ctx.moveTo(0, -ship.height/2);
+            ctx.lineTo(ship.width/2 + 10, ship.height/2);
+            ctx.lineTo(-ship.width/2 - 10, ship.height/2);
+            ctx.fill();
+
+            // Badan
+            ctx.fillStyle = ship.color; // cyan
+            ctx.beginPath();
+            ctx.moveTo(0, -ship.height/2 - 5);
+            ctx.lineTo(ship.width/2 - 5, ship.height/2);
+            ctx.lineTo(-ship.width/2 + 5, ship.height/2);
+            ctx.fill();
+            
+            ctx.restore();
+
+            // Gambar Asteroid
+            ctx.fillStyle = '#94a3b8'; // slate-400
+            obstacles.forEach(obs => {
+                ctx.beginPath();
+                ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 8);
+                ctx.fill();
+                // Kawah kecil asteroid
+                ctx.fillStyle = '#64748b';
+                ctx.beginPath();
+                ctx.arc(obs.x + 10, obs.y + 10, 4, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#94a3b8'; // reset
+            });
+
+            // Gambar AI Gate (Gerbang Emas/Ungu)
+            gates.forEach(gate => {
+                // Efek glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#d946ef'; // fuchsia
+                ctx.fillStyle = 'rgba(76, 29, 149, 0.85)'; // violet-900 
+                ctx.fillRect(0, gate.y, canvas.width, gate.height);
+                ctx.shadowBlur = 0; // reset
+
+                // Garis batas neon
+                ctx.strokeStyle = '#e879f9';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, gate.y);
+                ctx.lineTo(canvas.width, gate.y);
+                ctx.moveTo(0, gate.y + gate.height);
+                ctx.lineTo(canvas.width, gate.y + gate.height);
+                ctx.stroke();
+
+                // Teks Soal AI
+                ctx.fillStyle = '#fde047'; // yellow-300
+                ctx.font = 'bold 20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                // Batasi lebar teks agar tidak keluar canvas
+                ctx.fillText(gate.qStr, canvas.width / 2, gate.y + gate.height / 2, canvas.width - 20);
+            });
+
+            // UI HUD
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`HP: ${'❤️'.repeat(hp)}`, 15, 35);
+            
+            ctx.textAlign = 'right';
+            ctx.fillText(`Skor: ${score}`, canvas.width - 15, 35);
+
+            // Indikator Fetching
+            if (isFetchingAI) {
+                ctx.fillStyle = '#d946ef';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText("✨ AI sedang memikirkan pertanyaan...", canvas.width/2, 60);
+            }
+        }
+
+        function loop() {
+            if (isPlaying) {
+                updateGame();
+                drawGame();
+            }
+            gameLoop = requestAnimationFrame(loop);
+        }
+
+    </script>
+</body>
+</html>
